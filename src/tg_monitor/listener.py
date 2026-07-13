@@ -6,9 +6,10 @@ from datetime import timezone
 from telethon import TelegramClient, events
 from telethon.tl.types import Channel, Chat, User
 
-from .analyzers import analyze_message
+from .game_list.classifier import analyze_game_list_message
+from .user_review.classifier import analyze_user_reply
 from .config import Settings
-from .storage import SQLiteStore, StoredMessage
+from .storage import GameListAnalysis, RawMessage, SQLiteStore, UserReplyAnalysis
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,9 +32,10 @@ async def register_handlers(client: TelegramClient, settings: Settings, store: S
             return
 
         is_reply = event.message.is_reply
-        analysis = analyze_message(text=text, is_reply=is_reply)
+        game_list_result = analyze_game_list_message(text=text)
+        user_reply_result = analyze_user_reply(text=text, is_reply=is_reply)
 
-        stored = StoredMessage(
+        raw_message = RawMessage(
             chat_id=event.chat_id or 0,
             chat_title=getattr(chat, "title", None),
             chat_username=getattr(chat, "username", None),
@@ -44,29 +46,51 @@ async def register_handlers(client: TelegramClient, settings: Settings, store: S
             text=text,
             reply_to_message_id=event.message.reply_to_msg_id,
             created_at=event.message.date.astimezone(timezone.utc).isoformat(),
-            is_game_list_related=analysis.is_game_list_related,
-            game_list_reason=analysis.game_list_reason,
-            quality_score=analysis.quality_score,
-            quality_reason=analysis.quality_reason,
         )
-        store.upsert_message(stored)
+        store.upsert_raw_message(raw_message)
+        store.upsert_game_list_analysis(
+            GameListAnalysis(
+                chat_id=raw_message.chat_id,
+                message_id=raw_message.message_id,
+                is_related=game_list_result.is_related,
+                reason=game_list_result.reason,
+            )
+        )
+        store.upsert_user_reply_analysis(
+            UserReplyAnalysis(
+                chat_id=raw_message.chat_id,
+                message_id=raw_message.message_id,
+                user_id=raw_message.sender_id,
+                is_reply=is_reply,
+                response_type=user_reply_result.response_type,
+                response_type_reason=user_reply_result.response_type_reason,
+                quality_score=user_reply_result.quality_score,
+                quality_reason=user_reply_result.quality_reason,
+            )
+        )
 
         LOGGER.info(
-            "Stored message chat_id=%s message_id=%s sender_id=%s reply=%s game_list=%s quality=%s",
-            stored.chat_id,
-            stored.message_id,
-            stored.sender_id,
-            bool(stored.reply_to_message_id),
-            stored.is_game_list_related,
-            stored.quality_score,
+            "Stored raw message chat_id=%s message_id=%s sender_id=%s reply=%s",
+            raw_message.chat_id,
+            raw_message.message_id,
+            raw_message.sender_id,
+            bool(raw_message.reply_to_message_id),
+        )
+        LOGGER.info(
+            "Game-list analysis chat_id=%s message_id=%s related=%s reason=%s",
+            raw_message.chat_id,
+            raw_message.message_id,
+            game_list_result.is_related,
+            game_list_result.reason,
         )
 
-        if stored.sender_id in settings.tracked_user_ids and stored.reply_to_message_id:
+        if raw_message.sender_id in settings.tracked_user_ids and raw_message.reply_to_message_id:
             LOGGER.info(
-                "Tracked user reply user_id=%s quality=%s reason=%s",
-                stored.sender_id,
-                stored.quality_score,
-                stored.quality_reason,
+                "Tracked user reply user_id=%s type=%s quality=%s reason=%s",
+                raw_message.sender_id,
+                user_reply_result.response_type,
+                user_reply_result.quality_score,
+                user_reply_result.quality_reason,
             )
 
 

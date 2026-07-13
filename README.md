@@ -44,6 +44,12 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+也可以直接使用 Windows CMD 腳本：
+
+```cmd
+install_deps.cmd
+```
+
 ## 設定
 
 請先把 `.env.example` 複製成 `.env`，再填入實際值。
@@ -72,6 +78,12 @@ SQLITE_PATH=data/tg_monitor.db
 python -m src.tg_monitor.main
 ```
 
+或使用 Windows CMD 腳本：
+
+```cmd
+run_listener.cmd
+```
+
 第一次執行時，Telethon 會要求在終端登入驗證，並建立本機 session 檔案。
 
 ## 查看指定使用者統計
@@ -80,20 +92,49 @@ python -m src.tg_monitor.main
 python -m src.tg_monitor.report
 ```
 
+或使用 Windows CMD 腳本：
+
+```cmd
+run_report.cmd
+```
+
 ## 目前儲存的資料
 
-每筆訊息目前會記錄：
+SQLite 會把資料拆成三類，不把兩個目標混在同一張原始訊息表裡。
 
-- chat id、chat title、chat username
-- sender user id、sender username、display name
+`raw_messages` 只存 Telegram 原始訊息：
+
+- chat id
+- sender user id
 - message id
 - 原始訊息文字
 - reply 對應的 message id
 - UTC 時間
-- 是否與遊戲清單更新有關
-- 遊戲清單判斷原因
+
+`game_list_analysis` 只存遊戲清單整理用的判斷：
+
+- chat id
+- message id
+- 是否疑似遊戲清單相關
+- 判斷原因
+- 分析時間
+
+`user_reply_analysis` 只存 USER 考核用的判斷：
+
+- chat id
+- message id
+- user id
+- 是否為 reply
+- 回應內容類型
+- 回應內容類型原因
 - 回覆品質分數
 - 回覆品質說明
+- 分析時間
+
+另外還有輔助表：
+
+- `chats`
+- `users`
 
 ## 回覆品質評分
 

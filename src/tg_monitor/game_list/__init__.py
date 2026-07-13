@@ -1,0 +1,2 @@
+"""Game-list analysis package."""
+

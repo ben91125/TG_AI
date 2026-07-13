@@ -16,7 +16,7 @@ def main() -> None:
         for row in rows:
             print(
                 "user_id={user_id} replies={reply_count} avg_quality={avg_quality_score} "
-                "high_quality={high_quality_replies} game_list_related={game_list_related_replies}".format(
+                "high_quality={high_quality_replies} low_quality={low_quality_replies}".format(
                     **row
                 )
             )
