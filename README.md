@@ -160,3 +160,16 @@ user_id=123456789 replies=18 avg_quality=74.2 high_quality=9 game_list_related=4
 - 加入群組 / 頻道白名單與黑名單
 - 匯出 CSV 或提供 API
 - 做簡單 dashboard
+
+## 訊息編輯追蹤
+
+`raw_messages` 目前保留同一筆 Telegram 訊息的最新內容，不保存每次編輯的歷史版本。
+
+同一個 `chat_id + message_id` 再次被看到時：
+
+- `text` 會更新成目前最新內容
+- `edited_at` 會記錄 Telegram 提供的編輯時間
+- `edit_count` 會在文字內容真的改變時加 1
+- `last_seen_at` 會記錄程式最後一次看到這筆訊息的時間
+
+`.xlsx` 匯出也會帶出 `edited_at`、`edit_count`、`last_seen_at`，方便人工檢查訊息是否曾被編輯。

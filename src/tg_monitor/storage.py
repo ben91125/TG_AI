@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -17,6 +18,7 @@ class RawMessage:
     text: str
     reply_to_message_id: int | None
     created_at: str
+    edited_at: str | None
 
 
 @dataclass(slots=True)
@@ -69,6 +71,9 @@ class SQLiteStore:
                 text TEXT NOT NULL,
                 reply_to_message_id INTEGER,
                 created_at TEXT NOT NULL,
+                edited_at TEXT,
+                edit_count INTEGER NOT NULL DEFAULT 0,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(chat_id, message_id)
             );
 
@@ -97,8 +102,25 @@ class SQLiteStore:
             );
             """
         )
+        self._ensure_raw_message_columns()
         self._migrate_legacy_messages()
         self.conn.commit()
+
+    def _ensure_raw_message_columns(self) -> None:
+        columns = {row["name"] for row in self.conn.execute("PRAGMA table_info(raw_messages)").fetchall()}
+        if "edited_at" not in columns:
+            self.conn.execute("ALTER TABLE raw_messages ADD COLUMN edited_at TEXT")
+        if "edit_count" not in columns:
+            self.conn.execute("ALTER TABLE raw_messages ADD COLUMN edit_count INTEGER NOT NULL DEFAULT 0")
+        if "last_seen_at" not in columns:
+            self.conn.execute("ALTER TABLE raw_messages ADD COLUMN last_seen_at TEXT")
+        self.conn.execute(
+            """
+            UPDATE raw_messages
+            SET last_seen_at = created_at
+            WHERE last_seen_at IS NULL
+            """
+        )
 
     def _migrate_legacy_messages(self) -> None:
         if not self._table_exists("messages"):
@@ -112,7 +134,10 @@ class SQLiteStore:
                 sender_id,
                 text,
                 reply_to_message_id,
-                created_at
+                created_at,
+                edited_at,
+                edit_count,
+                last_seen_at
             )
             SELECT
                 chat_id,
@@ -120,6 +145,9 @@ class SQLiteStore:
                 sender_id,
                 text,
                 reply_to_message_id,
+                created_at,
+                NULL,
+                0,
                 created_at
             FROM messages;
 
@@ -171,7 +199,19 @@ class SQLiteStore:
         ).fetchone()
         return row is not None
 
-    def upsert_raw_message(self, message: RawMessage) -> None:
+    def upsert_raw_message(self, message: RawMessage) -> bool:
+        existing = self.conn.execute(
+            """
+            SELECT text
+            FROM raw_messages
+            WHERE chat_id = ?
+              AND message_id = ?
+            """,
+            (message.chat_id, message.message_id),
+        ).fetchone()
+        text_changed = existing is not None and existing["text"] != message.text
+        last_seen_at = _utc_now_iso()
+
         self.conn.execute(
             """
             INSERT INTO chats (chat_id, title, username)
@@ -203,14 +243,28 @@ class SQLiteStore:
                 sender_id,
                 text,
                 reply_to_message_id,
-                created_at
+                created_at,
+                edited_at,
+                edit_count,
+                last_seen_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)
             ON CONFLICT(chat_id, message_id) DO UPDATE SET
                 sender_id = excluded.sender_id,
                 text = excluded.text,
                 reply_to_message_id = excluded.reply_to_message_id,
-                created_at = excluded.created_at
+                created_at = excluded.created_at,
+                edited_at = CASE
+                    WHEN raw_messages.text IS NOT excluded.text
+                    THEN COALESCE(excluded.edited_at, excluded.last_seen_at)
+                    ELSE COALESCE(excluded.edited_at, raw_messages.edited_at)
+                END,
+                edit_count = CASE
+                    WHEN raw_messages.text IS NOT excluded.text
+                    THEN raw_messages.edit_count + 1
+                    ELSE raw_messages.edit_count
+                END,
+                last_seen_at = excluded.last_seen_at
             """,
             (
                 message.chat_id,
@@ -219,9 +273,12 @@ class SQLiteStore:
                 message.text,
                 message.reply_to_message_id,
                 message.created_at,
+                message.edited_at,
+                last_seen_at,
             ),
         )
         self.conn.commit()
+        return text_changed
 
     def upsert_game_list_analysis(self, analysis: GameListAnalysis) -> None:
         self.conn.execute(
@@ -306,3 +363,7 @@ class SQLiteStore:
 
     def close(self) -> None:
         self.conn.close()
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()

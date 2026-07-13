@@ -38,6 +38,9 @@ def main() -> None:
                 rm.sender_id,
                 rm.message_id,
                 rm.reply_to_message_id,
+                rm.edited_at,
+                rm.edit_count,
+                rm.last_seen_at,
                 rm.text
             FROM raw_messages rm
             LEFT JOIN chats c ON c.chat_id = rm.chat_id
@@ -57,6 +60,9 @@ def main() -> None:
                 gla.message_id,
                 gla.is_related,
                 gla.reason,
+                rm.edited_at,
+                rm.edit_count,
+                rm.last_seen_at,
                 rm.text
             FROM game_list_analysis gla
             JOIN raw_messages rm
@@ -82,6 +88,9 @@ def main() -> None:
                 ura.response_type_reason,
                 ura.quality_score,
                 ura.quality_reason,
+                rm.edited_at,
+                rm.edit_count,
+                rm.last_seen_at,
                 rm.text
             FROM user_reply_analysis ura
             JOIN raw_messages rm
@@ -156,9 +165,23 @@ def _empty_headers_for(title: str) -> list[str]:
             "sender_id",
             "message_id",
             "reply_to_message_id",
+            "edited_at",
+            "edit_count",
+            "last_seen_at",
             "text",
         ],
-        "GameListAnalysis": ["created_at", "chat_title", "chat_id", "message_id", "is_related", "reason", "text"],
+        "GameListAnalysis": [
+            "created_at",
+            "chat_title",
+            "chat_id",
+            "message_id",
+            "is_related",
+            "reason",
+            "edited_at",
+            "edit_count",
+            "last_seen_at",
+            "text",
+        ],
         "UserReview": [
             "created_at",
             "chat_title",
@@ -170,6 +193,9 @@ def _empty_headers_for(title: str) -> list[str]:
             "response_type_reason",
             "quality_score",
             "quality_reason",
+            "edited_at",
+            "edit_count",
+            "last_seen_at",
             "text",
         ],
         "Chats": ["chat_id", "title", "username", "message_count", "latest_message_at"],

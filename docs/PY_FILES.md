@@ -217,3 +217,17 @@ run_export_xlsx.cmd
 
 此檔案目前只重新 export 兩邊的 public function / result class，避免未來若有舊 import 路徑時完全斷掉。
 
+## 訊息編輯追蹤補充
+
+`src/tg_monitor/listener.py` 同時處理 `events.NewMessage()` 與 `events.MessageEdited()`。
+
+編輯後的 Telegram 訊息會走同一條 `_handle_message_event()` 流程，並用 `chat_id + message_id` 更新同一筆 `raw_messages`。
+
+`src/tg_monitor/storage.py` 目前採用「保留最新版本內容」策略：
+
+- `text` 保存最新內容
+- `edited_at` 保存 Telegram 編輯時間
+- `edit_count` 保存文字內容變更次數
+- `last_seen_at` 保存程式最後一次看到該訊息的時間
+
+`src/tg_monitor/export_xlsx.py` 匯出的 `RawMessages`、`GameListAnalysis`、`UserReview` 也會包含 `edited_at`、`edit_count`、`last_seen_at`，避免 SQLite 已有欄位但 Excel 看不到。
