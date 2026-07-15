@@ -60,6 +60,7 @@ install_deps.cmd
 - `TG_API_HASH`
 - `TG_SESSION_NAME`
 - `TRACKED_USER_IDS`
+- `CHAT_BLOCKLIST_IDS`
 - `SQLITE_PATH`
 
 範例：
@@ -69,8 +70,15 @@ TG_API_ID=123456
 TG_API_HASH=your_api_hash
 TG_SESSION_NAME=tg-ai-monitor
 TRACKED_USER_IDS=123456789,987654321
+CHAT_BLOCKLIST_IDS=-1001234567890,-5347871611
 SQLITE_PATH=data/tg_monitor.db
 ```
+
+`TRACKED_USER_IDS` 是記錄白名單，留空代表所有使用者訊息都記錄。填入後仍會監聽所有群組與頻道，但只有指定 user id 的訊息會寫進 SQLite。
+
+`CHAT_BLOCKLIST_IDS` 是群組 / 頻道黑名單，留空代表不排除任何來源。填入後指定 chat id 內的訊息不會寫進 SQLite。
+
+兩個條件可以同時使用：先排除 chat 黑名單，再檢查 sender user id 是否需要記錄。
 
 ## 執行監聽
 

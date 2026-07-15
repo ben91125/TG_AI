@@ -43,7 +43,8 @@ run_listener.cmd
 主要責任：
 
 - 從 `.env` 載入 `TG_API_ID`、`TG_API_HASH`、`TG_SESSION_NAME`、`TRACKED_USER_IDS`、`SQLITE_PATH`、`LOG_LEVEL`。
-- 將 `TRACKED_USER_IDS` 從逗號字串轉成 `set[int]`。
+- 將 `TRACKED_USER_IDS` 從逗號字串轉成 `set[int]`，供 listener 過濾指定使用者。
+- 將 `CHAT_BLOCKLIST_IDS` 從逗號字串轉成 `set[int]`，供 listener 排除指定群組 / 頻道。
 - 建立 SQLite 檔案所在資料夾。
 - 回傳 `Settings` dataclass。
 
@@ -80,6 +81,8 @@ Telegram message
 注意：
 
 - 私訊目前不寫入，因為目標是監聽帳號所在的群組與頻道。
+- 若 `.env` 設定 `CHAT_BLOCKLIST_IDS`，指定 chat id 內的訊息會被略過。
+- 若 `.env` 設定 `TRACKED_USER_IDS`，仍會監聽所有群組與頻道，但只有指定 user id 的訊息會寫入。
 - 純空文字訊息目前會略過。
 
 ## SQLite 資料層

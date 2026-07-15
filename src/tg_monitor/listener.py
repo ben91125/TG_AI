@@ -40,8 +40,18 @@ async def _handle_message_event(
     if not _is_group_chat(chat):
         return
 
+    chat_id = event.chat_id or 0
+    if _is_blocked_chat(chat_id, settings):
+        LOGGER.debug("Skipped message from blocklisted chat_id=%s", chat_id)
+        return
+
     text = event.raw_text or ""
     if not text.strip():
+        return
+
+    sender_id = getattr(sender, "id", None)
+    if not _is_tracked_sender(sender_id, settings):
+        LOGGER.debug("Skipped message from untracked sender_id=%s chat_id=%s", sender_id, chat_id)
         return
 
     is_reply = event.message.is_reply
@@ -49,10 +59,10 @@ async def _handle_message_event(
     user_reply_result = analyze_user_reply(text=text, is_reply=is_reply)
 
     raw_message = RawMessage(
-        chat_id=event.chat_id or 0,
+        chat_id=chat_id,
         chat_title=getattr(chat, "title", None),
         chat_username=getattr(chat, "username", None),
-        sender_id=getattr(sender, "id", None),
+        sender_id=sender_id,
         sender_username=getattr(sender, "username", None),
         sender_display_name=_display_name(sender),
         message_id=event.message.id,
@@ -112,6 +122,14 @@ async def _handle_message_event(
 
 def _is_group_chat(chat: object) -> bool:
     return isinstance(chat, (Chat, Channel))
+
+
+def _is_blocked_chat(chat_id: int, settings: Settings) -> bool:
+    return chat_id in settings.chat_blocklist_ids
+
+
+def _is_tracked_sender(sender_id: int | None, settings: Settings) -> bool:
+    return not settings.tracked_user_ids or sender_id in settings.tracked_user_ids
 
 
 def _telegram_datetime_to_utc_iso(value: datetime | None) -> str | None:
