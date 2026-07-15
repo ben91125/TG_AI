@@ -45,6 +45,7 @@ run_listener.cmd
 - 從 `.env` 載入 `TG_API_ID`、`TG_API_HASH`、`TG_SESSION_NAME`、`TRACKED_USER_IDS`、`SQLITE_PATH`、`LOG_LEVEL`。
 - 將 `TRACKED_USER_IDS` 從逗號字串轉成 `set[int]`，供 listener 過濾指定使用者。
 - 將 `CHAT_BLOCKLIST_IDS` 從逗號字串轉成 `set[int]`，供 listener 排除指定群組 / 頻道。
+- 載入 `AUTO_MARK_READ` 與隨機 ACK 延遲秒數，供 listener 決定是否自動標記已讀。
 - 建立 SQLite 檔案所在資料夾。
 - 回傳 `Settings` dataclass。
 
@@ -83,6 +84,7 @@ Telegram message
 - 私訊目前不寫入，因為目標是監聽帳號所在的群組與頻道。
 - 若 `.env` 設定 `CHAT_BLOCKLIST_IDS`，指定 chat id 內的訊息會被略過。
 - 若 `.env` 設定 `TRACKED_USER_IDS`，仍會監聽所有群組與頻道，但只有指定 user id 的訊息會寫入。
+- 若 `.env` 設定 `AUTO_MARK_READ=true`，通過過濾且已寫入 DB 的新訊息會在隨機延遲後標記已讀。
 - 純空文字訊息目前會略過。
 
 ## SQLite 資料層

@@ -61,6 +61,9 @@ install_deps.cmd
 - `TG_SESSION_NAME`
 - `TRACKED_USER_IDS`
 - `CHAT_BLOCKLIST_IDS`
+- `AUTO_MARK_READ`
+- `AUTO_MARK_READ_DELAY_MIN_SECONDS`
+- `AUTO_MARK_READ_DELAY_MAX_SECONDS`
 - `SQLITE_PATH`
 
 範例：
@@ -71,6 +74,9 @@ TG_API_HASH=your_api_hash
 TG_SESSION_NAME=tg-ai-monitor
 TRACKED_USER_IDS=123456789,987654321
 CHAT_BLOCKLIST_IDS=-1001234567890,-5347871611
+AUTO_MARK_READ=false
+AUTO_MARK_READ_DELAY_MIN_SECONDS=0
+AUTO_MARK_READ_DELAY_MAX_SECONDS=60
 SQLITE_PATH=data/tg_monitor.db
 ```
 
@@ -79,6 +85,12 @@ SQLITE_PATH=data/tg_monitor.db
 `CHAT_BLOCKLIST_IDS` 是群組 / 頻道黑名單，留空代表不排除任何來源。填入後指定 chat id 內的訊息不會寫進 SQLite。
 
 兩個條件可以同時使用：先排除 chat 黑名單，再檢查 sender user id 是否需要記錄。
+
+`AUTO_MARK_READ` 是自動已讀 ACK 開關，預設 `false`。開啟後，只有通過 `CHAT_BLOCKLIST_IDS` 與 `TRACKED_USER_IDS` 條件、且已成功寫入 SQLite 的新訊息，才會排程標記已讀。
+
+`AUTO_MARK_READ_DELAY_MIN_SECONDS` 和 `AUTO_MARK_READ_DELAY_MAX_SECONDS` 控制 ACK 前的隨機等待秒數。預設是 `0` 到 `60` 秒，因此會在收到並記錄訊息後，隨機等待最多 60 秒再標記已讀。
+
+這個功能不會自動回覆、轉發或發送訊息，只會呼叫 Telegram 的 read acknowledge。編輯事件不會觸發 ACK。
 
 ## 執行監聽
 

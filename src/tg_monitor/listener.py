@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import random
 from datetime import datetime, timezone
 
 from telethon import TelegramClient, events
@@ -21,14 +23,15 @@ def build_client(settings: Settings) -> TelegramClient:
 async def register_handlers(client: TelegramClient, settings: Settings, store: SQLiteStore) -> None:
     @client.on(events.NewMessage())
     async def handle_new_message(event: events.NewMessage.Event) -> None:
-        await _handle_message_event(event, settings, store, event_name="new")
+        await _handle_message_event(client, event, settings, store, event_name="new")
 
     @client.on(events.MessageEdited())
     async def handle_edited_message(event: events.MessageEdited.Event) -> None:
-        await _handle_message_event(event, settings, store, event_name="edited")
+        await _handle_message_event(client, event, settings, store, event_name="edited")
 
 
 async def _handle_message_event(
+    client: TelegramClient,
     event: events.NewMessage.Event | events.MessageEdited.Event,
     settings: Settings,
     store: SQLiteStore,
@@ -117,6 +120,56 @@ async def _handle_message_event(
             user_reply_result.response_type,
             user_reply_result.quality_score,
             user_reply_result.quality_reason,
+        )
+
+    if event_name == "new":
+        _schedule_mark_read(client, event, settings, raw_message)
+
+
+def _schedule_mark_read(
+    client: TelegramClient,
+    event: events.NewMessage.Event | events.MessageEdited.Event,
+    settings: Settings,
+    raw_message: RawMessage,
+) -> None:
+    if not settings.auto_mark_read:
+        return
+
+    delay_seconds = random.uniform(
+        settings.auto_mark_read_delay_min_seconds,
+        settings.auto_mark_read_delay_max_seconds,
+    )
+    asyncio.create_task(
+        _mark_read_after_delay(
+            client=client,
+            event=event,
+            raw_message=raw_message,
+            delay_seconds=delay_seconds,
+        )
+    )
+
+
+async def _mark_read_after_delay(
+    client: TelegramClient,
+    event: events.NewMessage.Event | events.MessageEdited.Event,
+    raw_message: RawMessage,
+    delay_seconds: float,
+) -> None:
+    try:
+        await asyncio.sleep(delay_seconds)
+        input_chat = await event.get_input_chat()
+        await client.send_read_acknowledge(input_chat, event.message)
+        LOGGER.info(
+            "Marked message as read chat_id=%s message_id=%s delay_seconds=%.2f",
+            raw_message.chat_id,
+            raw_message.message_id,
+            delay_seconds,
+        )
+    except Exception:
+        LOGGER.exception(
+            "Failed to mark message as read chat_id=%s message_id=%s",
+            raw_message.chat_id,
+            raw_message.message_id,
         )
 
 
