@@ -118,6 +118,33 @@ python -m src.tg_monitor.report
 run_report.cmd
 ```
 
+## 匯出 Excel 快照
+
+```powershell
+python -m src.tg_monitor.export_xlsx
+```
+
+或使用 Windows CMD 腳本：
+
+```cmd
+run_export_xlsx.cmd
+```
+
+雙擊 `run_export_xlsx.cmd` 時會提示輸入匯出時間範圍，時間使用本機時區 `Asia/Taipei UTC+8`。
+
+可接受格式：
+
+- `YYYY-MM-DD`
+- `YYYY-MM-DD HH:MM`
+- `YYYY-MM-DD HH:MM:SS`
+
+開始時間或結束時間可以留空。兩個都留空時，維持原本行為，完整匯出 DB 內所有資料。
+
+匯出的檔名會標示範圍：
+
+- `_all` 表示完整匯出。
+- `_range_開始_to_結束` 表示依輸入時間範圍匯出。
+
 ## 目前儲存的資料
 
 SQLite 會把資料拆成三類，不把兩個目標混在同一張原始訊息表裡。

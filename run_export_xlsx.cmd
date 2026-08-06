@@ -13,7 +13,19 @@ if not exist ".venv\Scripts\python.exe" (
     exit /b 1
 )
 
-.venv\Scripts\python.exe -m src.tg_monitor.export_xlsx
+echo.
+echo Export time range uses local time: Asia/Taipei UTC+8.
+echo Accepted formats:
+echo   YYYY-MM-DD
+echo   YYYY-MM-DD HH:MM
+echo   YYYY-MM-DD HH:MM:SS
+echo Leave blank to export without that limit.
+echo.
+set /p EXPORT_START=Start time ^(blank = no start limit^):
+set /p EXPORT_END=End time ^(blank = no end limit^):
+echo.
+
+.venv\Scripts\python.exe -m src.tg_monitor.export_xlsx --start "%EXPORT_START%" --end "%EXPORT_END%"
 if errorlevel 1 (
     echo Export failed.
     pause

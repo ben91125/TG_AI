@@ -189,9 +189,12 @@ run_report.cmd
 - 將不同資料表 / join 結果放進不同 sheet。
 - 設定基本欄寬、凍結表頭、filter、換行。
 - 輸出到 `outputs/reports/`。
+- 支援 `--start` / `--end` 指定匯出時間範圍，未指定時完整匯出。
+- 檔名會用 `_all` 或 `_range_開始_to_結束` 標示是否為全量匯出。
 
 目前 sheet：
 
+- `ExportInfo`
 - `RawMessages`
 - `GameListAnalysis`
 - `UserReview`
