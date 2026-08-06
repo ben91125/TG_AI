@@ -14,6 +14,7 @@ from .config import Settings
 from .storage import GameListAnalysis, RawMessage, SQLiteStore, UserReplyAnalysis
 
 LOGGER = logging.getLogger(__name__)
+_BACKGROUND_TASKS: set[asyncio.Task[None]] = set()
 
 
 def build_client(settings: Settings) -> TelegramClient:
@@ -139,13 +140,21 @@ def _schedule_mark_read(
         settings.auto_mark_read_delay_min_seconds,
         settings.auto_mark_read_delay_max_seconds,
     )
-    asyncio.create_task(
+    task = asyncio.create_task(
         _mark_read_after_delay(
             client=client,
             event=event,
             raw_message=raw_message,
             delay_seconds=delay_seconds,
         )
+    )
+    _BACKGROUND_TASKS.add(task)
+    task.add_done_callback(_BACKGROUND_TASKS.discard)
+    LOGGER.info(
+        "Scheduled read ACK chat_id=%s message_id=%s delay_seconds=%.2f",
+        raw_message.chat_id,
+        raw_message.message_id,
+        delay_seconds,
     )
 
 
@@ -158,7 +167,7 @@ async def _mark_read_after_delay(
     try:
         await asyncio.sleep(delay_seconds)
         input_chat = await event.get_input_chat()
-        await client.send_read_acknowledge(input_chat, event.message)
+        await client.send_read_acknowledge(input_chat, max_id=raw_message.message_id)
         LOGGER.info(
             "Marked message as read chat_id=%s message_id=%s delay_seconds=%.2f",
             raw_message.chat_id,

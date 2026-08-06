@@ -30,5 +30,6 @@ outputs/
 # Editor and OS noise
 .idea/
 .vscode/
+*.lnk
 Thumbs.db
 Desktop.ini

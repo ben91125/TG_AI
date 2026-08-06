@@ -27,6 +27,12 @@ async def async_main() -> None:
 
     logging.getLogger(__name__).info("Telegram monitor started.")
     logging.getLogger(__name__).info("Tracked user IDs: %s", sorted(settings.tracked_user_ids))
+    logging.getLogger(__name__).info(
+        "Auto mark read: enabled=%s delay_range_seconds=%.2f-%.2f",
+        settings.auto_mark_read,
+        settings.auto_mark_read_delay_min_seconds,
+        settings.auto_mark_read_delay_max_seconds,
+    )
     logging.getLogger(__name__).info("SQLite path: %s", settings.sqlite_path)
 
     try:
