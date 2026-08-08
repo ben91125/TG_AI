@@ -1,7 +1,9 @@
 accounts/*.env
 !accounts/example.env
 sessions/
-exports/
+exports/**
+!exports/**/
+!exports/**/*.jsonl
 *.session
 *.session-journal
 __pycache__/
