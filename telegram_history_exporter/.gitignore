@@ -1,0 +1,8 @@
+accounts/*.env
+!accounts/example.env
+sessions/
+exports/
+*.session
+*.session-journal
+__pycache__/
+*.py[cod]
