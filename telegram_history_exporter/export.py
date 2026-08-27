@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import calendar
 import json
 import mimetypes
 import os
@@ -76,6 +77,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--from-date", type=parse_iso_date, help="Inclusive YYYY-MM-DD")
     parser.add_argument("--to-date", type=parse_iso_date, help="Inclusive YYYY-MM-DD")
     parser.add_argument(
+        "--month", type=parse_month, help="Completed calendar month, YYYY-MM"
+    )
+    parser.add_argument(
         "--no-media", action="store_true", help="Write metadata but do not download media"
     )
     parser.add_argument(
@@ -106,6 +110,14 @@ def parse_iso_date(value: str) -> date:
         raise argparse.ArgumentTypeError("Date must be YYYY-MM-DD") from exc
 
 
+def parse_month(value: str) -> date:
+    try:
+        parsed = datetime.strptime(value, "%Y-%m").date()
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Month must be YYYY-MM") from exc
+    return parsed.replace(day=1)
+
+
 def positive_int(value: str) -> int:
     parsed = int(value)
     if parsed < 1:
@@ -132,18 +144,32 @@ def prompt_missing(args: argparse.Namespace) -> argparse.Namespace:
     if not args.chat_id:
         args.chat_id = int(input("Chat ID: ").strip())
 
+    if args.month and (args.from_date or args.to_date):
+        raise SystemExit("--month 不能與 --from-date/--to-date 同時使用。")
+    if args.month:
+        args.from_date, args.to_date = completed_month_dates(args.month)
+        return args
+
     if args.from_date or args.to_date:
         if not (args.from_date and args.to_date):
             raise SystemExit("--from-date 與 --to-date 必須一起提供。")
         return args
 
-    print("\n匯出模式：\n1. 全部歷史（LOG 依月份分檔）\n2. 指定日期範圍（單一 LOG）")
-    mode = input("請選擇 [1/2]: ").strip() or "1"
+    print(
+        "\n匯出模式：\n"
+        "1. 全部歷史（LOG 依月份分檔）\n"
+        "2. 指定日期範圍（單一 LOG）\n"
+        "3. 指定已結束月份（重新取得整月並更新正式月檔）"
+    )
+    mode = input("請選擇 [1/2/3]: ").strip() or "1"
     if mode == "2":
         args.from_date = prompt_date("起始日期 YYYY-MM-DD: ")
         args.to_date = prompt_date("結束日期 YYYY-MM-DD: ")
+    elif mode == "3":
+        args.month = prompt_month("月份 YYYY-MM: ")
+        args.from_date, args.to_date = completed_month_dates(args.month)
     elif mode != "1":
-        raise SystemExit("匯出模式只能選擇 1 或 2。")
+        raise SystemExit("匯出模式只能選擇 1、2 或 3。")
     return args
 
 
@@ -186,6 +212,24 @@ def prompt_date(label: str) -> date:
             return date.fromisoformat(raw)
         except ValueError:
             print("日期格式錯誤，請使用 YYYY-MM-DD。")
+
+
+def prompt_month(label: str) -> date:
+    while True:
+        raw = input(label).strip()
+        try:
+            return parse_month(raw)
+        except argparse.ArgumentTypeError:
+            print("月份格式錯誤，請使用 YYYY-MM。")
+
+
+def completed_month_dates(month: date, today: date | None = None) -> tuple[date, date]:
+    month = month.replace(day=1)
+    current = (today or datetime.now(LOCAL_TZ).date()).replace(day=1)
+    if month >= current:
+        raise SystemExit("只能封存已經結束的月份，不能選擇本月或未來月份。")
+    last_day = calendar.monthrange(month.year, month.month)[1]
+    return month, month.replace(day=last_day)
 
 
 def build_range(start: date | None, end: date | None) -> ExportRange:
@@ -419,8 +463,14 @@ async def download_media(
 
 
 def log_path(
-    log_root: Path, chat_id: int, export_range: ExportRange, local_date: date
+    log_root: Path,
+    chat_id: int,
+    export_range: ExportRange,
+    local_date: date,
+    archive_month: date | None = None,
 ) -> Path:
+    if archive_month:
+        return log_root / f"{chat_id}_{archive_month:%Y-%m}.jsonl"
     if export_range.label:
         return log_root / f"{chat_id}_{export_range.label}.jsonl"
     return log_root / f"{chat_id}_{local_date:%Y-%m}.jsonl"
@@ -446,6 +496,67 @@ def append_jsonl(path: Path, record: dict[str, Any]) -> None:
     with path.open("a", encoding="utf-8", newline="\n") as stream:
         stream.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
         stream.write("\n")
+
+
+def read_jsonl_records(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, start=1):
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"JSONL 解析失敗：{path} 第 {line_number} 行") from exc
+            if not isinstance(value, dict):
+                raise ValueError(f"JSONL 記錄不是物件：{path} 第 {line_number} 行")
+            records.append(value)
+    return records
+
+
+def archive_record_key(record: dict[str, Any]) -> tuple[Any, ...]:
+    event_type = record.get("event_type")
+    msg_id = record.get("msg_id")
+    if event_type in {"message", "service"}:
+        return ("snapshot", msg_id)
+    # Preserve event-stream entries such as reactions instead of collapsing
+    # every event that happens to reference the same Telegram message.
+    return ("event", event_type, msg_id, record.get("time"))
+
+
+def merge_month_archive(
+    existing_path: Path, fresh_path: Path
+) -> tuple[Path, int, int, int]:
+    existing = read_jsonl_records(existing_path)
+    fresh = read_jsonl_records(fresh_path)
+    merged: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for record in existing:
+        merged[archive_record_key(record)] = record
+    for record in fresh:
+        # A fresh Telegram snapshot wins for an existing msg_id; records that
+        # only exist in the old archive remain preserved.
+        merged[archive_record_key(record)] = record
+
+    ordered = sorted(
+        merged.values(),
+        key=lambda item: (
+            str(item.get("time") or ""),
+            int(item.get("msg_id") or 0),
+            str(item.get("event_type") or ""),
+        ),
+    )
+    merged_path = existing_path.with_name(existing_path.name + ".merge.part")
+    if merged_path.exists():
+        merged_path.unlink()
+    for record in ordered:
+        append_jsonl(merged_path, record)
+    # Parse the completed candidate before it is allowed to replace the old file.
+    verified = read_jsonl_records(merged_path)
+    if len(verified) != len(ordered):
+        raise ValueError("月檔合併驗證失敗，原始月檔未變更。")
+    return merged_path, len(existing), len(fresh), len(ordered)
 
 
 def show_progress(stats: ExportStats, current_time: datetime, force: bool = False) -> None:
@@ -559,6 +670,22 @@ async def export_chat(args: argparse.Namespace) -> None:
         chat_name = entity_name(entity)
         print(f"開始匯出：{chat_name} (chat_id={canonical_id})")
 
+        archive_final: Path | None = None
+        archive_fresh: Path | None = None
+        if args.month:
+            archive_final = log_path(
+                log_root, args.chat_id, export_range, args.month, archive_month=args.month
+            )
+            archive_fresh = archive_final.with_name(archive_final.name + ".refresh.part")
+            archive_fresh.parent.mkdir(parents=True, exist_ok=True)
+            if archive_fresh.exists():
+                archive_fresh.unlink()
+            archive_fresh.touch()
+            print(
+                f"月份封存：{args.month:%Y-%m}；完成前不會修改既有月檔 "
+                f"{archive_final.name}"
+            )
+
         existing_by_path: dict[Path, set[int]] = {}
         stats = ExportStats()
         semaphore = asyncio.Semaphore(args.media_workers)
@@ -582,8 +709,14 @@ async def export_chat(args: argparse.Namespace) -> None:
             if not export_range.contains(message.date):
                 continue
             destination_log = log_path(
-                log_root, args.chat_id, export_range, local_time.date()
+                log_root,
+                args.chat_id,
+                export_range,
+                local_time.date(),
+                archive_month=args.month,
             )
+            if archive_fresh is not None:
+                destination_log = archive_fresh
             known_ids = existing_by_path.setdefault(
                 destination_log, read_existing_ids(destination_log)
             )
@@ -598,6 +731,16 @@ async def export_chat(args: argparse.Namespace) -> None:
                 show_progress(stats, local_time, force=True)
 
         await flush_batch(batch, args, chat_name, media_root, semaphore, stats)
+        if archive_final is not None and archive_fresh is not None:
+            merged_path, old_count, fresh_count, merged_count = merge_month_archive(
+                archive_final, archive_fresh
+            )
+            os.replace(merged_path, archive_final)
+            archive_fresh.unlink(missing_ok=True)
+            print(
+                f"月份封存完成：舊檔 {old_count} 則、本次 Telegram {fresh_count} 則、"
+                f"合併後 {merged_count} 則；已更新 {archive_final.name}"
+            )
         final_time = local_time if "local_time" in locals() else datetime.now(LOCAL_TZ)
         show_progress(stats, final_time, force=True)
 

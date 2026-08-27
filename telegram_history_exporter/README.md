@@ -45,6 +45,14 @@ TG_PHONE=+886900000000
 .\run_export.cmd --account account_a --chat-id 6450183261 --from-date 2026-07-20 --to-date 2026-08-07
 ```
 
+月份結束後，可重新向 Telegram 取得完整月份並更新正式月檔：
+
+```powershell
+.\run_export.cmd --account account_a --chat-id 6450183261 --month 2026-07
+```
+
+互動模式中這是第 3 個選項。只能指定已結束月份；本月與未來月份會被拒絕。程式先寫入暫存檔，再與既有正式月檔依 `msg_id + event_type` 合併：Telegram 的新快照會更新同一訊息，舊月檔獨有的紀錄仍會保留。完成解析驗證後才原子替換正式月檔，中斷時不會破壞舊檔。
+
 只寫媒體 metadata、不下載檔案：
 
 ```powershell

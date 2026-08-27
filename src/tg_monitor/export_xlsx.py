@@ -14,6 +14,13 @@ from .storage import SQLiteStore
 
 LOCAL_TZ = timezone(timedelta(hours=8))
 UTC = timezone.utc
+LOCAL_DATETIME_HEADERS = {
+    "created_at",
+    "edited_at",
+    "last_seen_at",
+    "latest_message_at",
+}
+EXCEL_DATETIME_FORMAT = "yyyy-mm-dd hh:mm:ss"
 
 
 @dataclass(frozen=True, slots=True)
@@ -315,9 +322,30 @@ def _add_query_sheet(
     headers = rows[0].keys() if rows else _empty_headers_for(title)
     sheet.append(list(headers))
     for row in rows:
-        sheet.append([row[header] for header in headers])
+        sheet.append([_to_excel_value(header, row[header]) for header in headers])
+
+    header_indexes = {cell.value: cell.column for cell in sheet[1]}
+    for header in LOCAL_DATETIME_HEADERS:
+        column_index = header_indexes.get(header)
+        if not column_index:
+            continue
+        for row in sheet.iter_rows(min_row=2, min_col=column_index, max_col=column_index):
+            row[0].number_format = EXCEL_DATETIME_FORMAT
 
     _style_sheet(sheet)
+
+
+def _to_excel_value(header: str, value):
+    if header not in LOCAL_DATETIME_HEADERS or not isinstance(value, str) or not value:
+        return value
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    # Excel stores naive datetimes; the value is already converted to local time.
+    return parsed.astimezone(LOCAL_TZ).replace(tzinfo=None)
 
 
 def _empty_headers_for(title: str) -> list[str]:

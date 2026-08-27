@@ -52,6 +52,28 @@ class ExportHelpersTest(unittest.TestCase):
         )
         self.assertFalse(value.contains(datetime(2026, 8, 7, 16, 0, tzinfo=timezone.utc)))
 
+    def test_completed_month_uses_full_calendar_month(self):
+        start, end = export.completed_month_dates(
+            date(2024, 2, 1), today=date(2024, 3, 1)
+        )
+        self.assertEqual(start, date(2024, 2, 1))
+        self.assertEqual(end, date(2024, 2, 29))
+
+    def test_current_month_cannot_be_archived(self):
+        with self.assertRaises(SystemExit):
+            export.completed_month_dates(date(2026, 8, 1), today=date(2026, 8, 18))
+
+    def test_month_archive_uses_formal_month_filename(self):
+        value = export.build_range(date(2026, 7, 1), date(2026, 7, 31))
+        path = export.log_path(
+            Path("logs"),
+            6450183261,
+            value,
+            date(2026, 7, 5),
+            archive_month=date(2026, 7, 1),
+        )
+        self.assertEqual(path, Path("logs/6450183261_2026-07.jsonl"))
+
     def test_existing_ids_ignores_bad_and_non_message_lines(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "messages.jsonl"
@@ -66,6 +88,34 @@ class ExportHelpersTest(unittest.TestCase):
                 encoding="utf-8",
             )
             self.assertEqual(export.read_existing_ids(path), {10})
+
+    def test_month_merge_preserves_old_only_and_refreshes_existing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            existing = root / "123_2026-07.jsonl"
+            fresh = root / "123_2026-07.jsonl.refresh.part"
+            old_rows = [
+                {"time": "2026-07-01T00:00:00+08:00", "msg_id": 1, "event_type": "message", "text": "old"},
+                {"time": "2026-07-02T00:00:00+08:00", "msg_id": 2, "event_type": "message", "text": "deleted later"},
+            ]
+            fresh_rows = [
+                {"time": "2026-07-01T00:00:00+08:00", "msg_id": 1, "event_type": "message", "text": "edited"},
+                {"time": "2026-07-03T00:00:00+08:00", "msg_id": 3, "event_type": "message", "text": "new"},
+            ]
+            for row in old_rows:
+                export.append_jsonl(existing, row)
+            for row in fresh_rows:
+                export.append_jsonl(fresh, row)
+
+            merged_path, old_count, fresh_count, merged_count = export.merge_month_archive(
+                existing, fresh
+            )
+            merged = export.read_jsonl_records(merged_path)
+            self.assertEqual((old_count, fresh_count, merged_count), (2, 2, 3))
+            self.assertEqual([row["msg_id"] for row in merged], [1, 2, 3])
+            self.assertEqual(merged[0]["text"], "edited")
+            self.assertEqual(merged[1]["text"], "deleted later")
+            self.assertEqual(export.read_jsonl_records(existing), old_rows)
 
 
 class LoginTest(unittest.IsolatedAsyncioTestCase):
