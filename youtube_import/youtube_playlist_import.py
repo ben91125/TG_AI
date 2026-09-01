@@ -23,6 +23,7 @@ RESULT_FILE = BASE / "youtube_import_result.csv"
 RETRYABLE = {429, 500, 502, 503, 504}
 QUOTA_REASONS = {"quotaExceeded", "dailyLimitExceeded", "dailyLimitExceededUnreg", "userRateLimitExceeded"}
 MAX_RETRIES = 8
+AUTO_CONFIRM_CHANNEL_ID = os.environ.get("YOUTUBE_AUTO_CONFIRM_CHANNEL_ID", "").strip()
 RESULT_LOCK_WARNING_SHOWN = False
 
 class QuotaExhausted(Exception): pass
@@ -148,6 +149,11 @@ def authenticated_channel(youtube):
 def confirm_channel(channel_id, title):
     print(f"\n=== CHANNEL CONFIRMATION REQUIRED ===\nChannel name: {title}\nChannel ID:   {channel_id}")
     print("No playlist has been created and no video has been written in this run.")
+    if AUTO_CONFIRM_CHANNEL_ID:
+        if channel_id != AUTO_CONFIRM_CHANNEL_ID:
+            raise SafeStop(f"Automatic channel check failed: expected {AUTO_CONFIRM_CHANNEL_ID}, got {channel_id}.")
+        print(f"Channel ID automatically confirmed by scheduled-job setting: {channel_id}")
+        return
     if input("Type the exact Channel ID to continue: ").strip() != channel_id:
         raise SafeStop(f"Channel not confirmed. If wrong, delete {TOKEN_FILE.name} and authorize again.")
 
